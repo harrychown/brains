@@ -1,0 +1,50 @@
+#!/bin/bash
+#PBS -l walltime=00:30:00
+#PBS -l select=1:ncpus=25:mem=150gb
+#PBS -N zmedaka
+#PBS -J 1-10000
+#CLUST_FASTA="/rds/general/user/rmonteir/projects/fisher-aspergillus-analysis/live/harry/brain/cluster/barcode_11/barcode_11.clusters4"
+CLUST_FASTA=$(sed -n "${PBS_ARRAY_INDEX}p" your/filepath/here/cluster-files.txt)
+NSLOTS=25
+DB_INFO_DIR="your/filepath/here/metagenomics"
+
+cp $CLUST_FASTA reads.fasta
+BARCODE=$( echo "$CLUST_FASTA" | rev | cut -d'/' -f2 | rev )
+SOURCE_OUT="your/filepath/here/brain"
+module load anaconda3/personal
+# Extract singular centroid
+source activate seqkit
+seqkit split -p 2 reads.fasta -w 0 -o- -O $TMPDIR 
+
+SPLIT_NAME=$( echo "$CLUST_FASTA" | rev | cut -d'/' -f1 | rev | sed "s/\./\.part_001\./g" )
+CLUST_NAME=$(echo "$SPLIT_NAME" | sed "s/\.part_001\./\./g")
+seqkit range -r -1:-1 reads.part_001.fasta > $CLUST_NAME.consensus
+# Make a consensus sequence
+source activate medaka
+medaka_consensus -d $CLUST_NAME.consensus -i reads.fasta -o $TMPDIR -m r941_min_fast_g303
+# Search against fungal DB
+source activate blast
+blastn -query consensus.fasta -db your/filepath/here/genome-db-23-01-24.blastdb -out $CLUST_NAME.blast -max_hsps 1  -max_target_seqs 10 -qcov_hsp_perc 90 -perc_identity 90 -num_threads $NSLOTS -outfmt "6 saccver qcovs bitscore nident mismatch gaps pident evalue"
+# Convert contig ID to species name
+while read LINE
+do
+	CONTIG=$( echo "$LINE" | awk '{ print $1 }')
+	ACC=$( cat $DB_INFO_DIR/acc-contigs-key.csv | grep $CONTIG | cut -d',' -f1)
+	ID=$( cat $DB_INFO_DIR/genome-db-23-01-24.csv | grep $ACC | cut -d',' -f3 )
+	echo "$LINE" | sed 's/'"$CONTIG"'/'"$ID"'/g'>> $CLUST_NAME.blast.clean
+done <$CLUST_NAME.blast
+
+#mkdir -p $SOURCE_OUT/summary/$BARCODE/
+mkdir -p $SOURCE_OUT/consensus/$BARCODE/
+mkdir -p $SOURCE_OUT/blast/$BARCODE/
+
+#mv $CLUST_NAME.summary $SOURCE_OUT/summary/$BARCODE/$CLUST_NAME.summary
+mv consensus.fasta $SOURCE_OUT/consensus/$BARCODE/$CLUST_NAME.consensus.fasta
+mv $CLUST_NAME.blast $SOURCE_OUT/blast/$BARCODE/$CLUST_NAME.blast
+mv $CLUST_NAME.blast.clean $SOURCE_OUT/blast/$BARCODE/$CLUST_NAME.blast.clean
+
+
+
+rm $PBS_O_WORKDIR/zmedaka*
+
+

@@ -1,0 +1,22 @@
+#!/bin/bash
+#PBS -l walltime=03:00:00
+#PBS -l select=1:ncpus=20:mem=160gb
+#PBS -N zporechop
+#PBS -J 1-20
+
+
+DIR=your/filepath/here/gz_files
+OUTDIR=your/filepath/here/trimmed
+PREFIX=$(sed -n "${PBS_ARRAY_INDEX}p" your/filepath/here/file_names.txt)
+
+mkdir -p $OUTDIR
+
+module load anaconda3/personal
+source activate trim-nanopore
+cp $DIR/$PREFIX.fastq.gz .
+gunzip $PREFIX.fastq.gz
+# Adapter removal, quality + length filter
+porechop -i $PREFIX.fastq -t 20 --format fastq | NanoFilt -q 10 -l 500 --maxlength 4000 > $PREFIX.trimmed.fastq
+gzip $PREFIX.trimmed.fastq
+mv $PREFIX.trimmed.fastq.gz $OUTDIR
+

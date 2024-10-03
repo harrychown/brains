@@ -1,0 +1,21 @@
+#!/bin/bash
+#PBS -l walltime=04:00:00
+#PBS -l select=1:ncpus=25:mem=150gb
+#PBS -N zvsearch
+#PBS -J 1-20
+
+
+DIR=your/filepath/here/trimmed
+OUTDIR=your/filepath/here/cluster
+PREFIX=$(sed -n "${PBS_ARRAY_INDEX}p" your/filepath/here/file_names.txt)
+
+mkdir -p $OUTDIR/$PREFIX
+
+module load anaconda3/personal
+source activate vsearch
+cp $DIR/$PREFIX.trimmed.fastq.gz .
+gunzip $PREFIX.trimmed.fastq.gz
+# Run clustering
+vsearch --cluster_fast $PREFIX.trimmed.fastq --id 0.9 --strand both --clusters $PREFIX.clusters --threads 25
+
+mv $PREFIX.clusters* $OUTDIR/$PREFIX
